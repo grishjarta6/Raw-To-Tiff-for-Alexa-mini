@@ -67,8 +67,6 @@ def identify_key(key: bytes) -> str:
 
 def _scan_range(data, start, end, packets, depth=0,
                 verbose=False, max_packets=20000):
-    """Сканирует KLV-пакеты в диапазоне. Найдя essence — НЕ прекращает
-    сканирование, а продолжает искать остальные кадры."""
     pos = start
     search_from = start
     while pos < end and len(packets) < max_packets:
@@ -102,18 +100,31 @@ def _scan_range(data, start, end, packets, depth=0,
             indent = "  " * depth
             print(f"{indent}[{len(packets):>4}] @ {pos:>10}  "
                   f"{key_type:<20}  len={length:>12}")
-
-        # ❗ НЕ возвращаем на essence — продолжаем искать остальные
+        if key_type in ("essence", "essence_arriraw", "essence_container"):
+            return pkt
         if key_type == "body_partition" and length > 0:
-            _scan_range(data, value_start, min(value_end, end), packets,
-                        depth=depth + 1, verbose=verbose,
-                        max_packets=max_packets)
-
+            inner = _scan_range(data, value_start,
+                                min(value_end, end), packets,
+                                depth=depth + 1, verbose=verbose,
+                                max_packets=max_packets)
+            if inner is not None:
+                return inner
         pos = value_start + length if length > 0 else pos + 1
         if pos <= value_end - length:
             pos += 1
         search_from = pos
     return None
+
+
+def scan_klv_packets(filepath: Path, max_scan=1024 * 1024 * 1024,
+                     verbose=False, max_packets=20000) -> list[dict]:
+    file_size = filepath.stat().st_size
+    scan_limit = min(file_size, max_scan)
+    with open(filepath, "rb") as f:
+        data = f.read(scan_limit)
+    packets: list[dict] = []
+    _scan_range(data, 0, len(data), packets, 0, verbose, max_packets)
+    return packets
 
 
 def parse(filepath: str | Path, verbose: bool = False) -> dict:
@@ -133,21 +144,8 @@ def parse(filepath: str | Path, verbose: bool = False) -> dict:
         "header_offset": essence[0]["value_start"],
         "essence_key":   essence[0]["key"],
         "packet_count":  len(packets),
-        "frame_count":   len(essence),       # ← теперь 17, а не 1
+        "frame_count":   len(essence),
         "frame_size":    essence[0]["length"],
         "packets":       packets,
-        "essence":       essence,            # ← список ВСЕХ кадров
+        "essence":       essence,
     }
-
-
-def scan_klv_packets(filepath: Path, max_scan=1024 * 1024 * 1024,
-                     verbose=False, max_packets=20000) -> list[dict]:
-    file_size = filepath.stat().st_size
-    scan_limit = min(file_size, max_scan)
-    with open(filepath, "rb") as f:
-        data = f.read(scan_limit)
-    packets: list[dict] = []
-    _scan_range(data, 0, len(data), packets, 0, verbose, max_packets)
-    return packets
-
-

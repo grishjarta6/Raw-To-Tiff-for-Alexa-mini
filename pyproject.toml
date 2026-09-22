@@ -7,7 +7,9 @@ authors = [
     { name = "grishjarta6 laptop", email = "sitepolongovna@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pillow>=12.3.0",
+]
 
 [project.scripts]
 raw-to-tiff-for-alexa-mini = "raw_to_tiff_for_alexa_mini:main"
